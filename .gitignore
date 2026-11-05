@@ -1,0 +1,7 @@
+# Local / OS
+.DS_Store
+Thumbs.db
+*.log
+
+# Unused full brand-pack dump (site uses assets/logo + assets/screenshots)
+assets/brand/
