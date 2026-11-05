@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: corexstacksite
+    runtime: static
+    repo: https://github.com/corexstackdev/corexstacksite
+    branch: main
+    autoDeployTrigger: commit
+    buildCommand: "true"
+    staticPublishPath: .
