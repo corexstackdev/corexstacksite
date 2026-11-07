@@ -7,3 +7,11 @@ services:
     autoDeployTrigger: commit
     buildCommand: "true"
     staticPublishPath: .
+    headers:
+      - path: /manifest.webmanifest
+        name: Content-Type
+        value: application/manifest+json
+      - path: /sw.js
+        name: Cache-Control
+        value: no-cache
+
