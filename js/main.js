@@ -1,19 +1,13 @@
 (() => {
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const header = document.querySelector("[data-header]");
   const toggle = document.querySelector("[data-nav-toggle]");
   const nav = document.querySelector("[data-nav]");
   const year = document.querySelector("[data-year]");
-  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  if (year) {
-    year.textContent = String(new Date().getFullYear());
-  }
+  if (year) year.textContent = String(new Date().getFullYear());
 
-  const onScroll = () => {
-    if (!header) return;
-    header.classList.toggle("is-scrolled", window.scrollY > 8);
-  };
-
+  const onScroll = () => header?.classList.toggle("is-scrolled", window.scrollY > 8);
   onScroll();
   window.addEventListener("scroll", onScroll, { passive: true });
 
@@ -23,154 +17,212 @@
       nav.classList.toggle("is-open", open);
       document.body.style.overflow = open ? "hidden" : "";
     };
-
-    toggle.addEventListener("click", () => {
-      const open = toggle.getAttribute("aria-expanded") !== "true";
-      setOpen(open);
-    });
-
-    nav.querySelectorAll("a").forEach((link) => {
-      link.addEventListener("click", () => setOpen(false));
-    });
-
-    window.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") setOpen(false);
+    toggle.addEventListener("click", () => setOpen(toggle.getAttribute("aria-expanded") !== "true"));
+    nav.querySelectorAll("a").forEach((link) => link.addEventListener("click", () => setOpen(false)));
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") setOpen(false);
     });
   }
 
-  // Ambient cursor wash
-  if (!reduceMotion) {
-    let mx = 50;
-    let my = 20;
-    let raf = 0;
-    window.addEventListener(
-      "pointermove",
-      (event) => {
-        mx = (event.clientX / window.innerWidth) * 100;
-        my = (event.clientY / window.innerHeight) * 100;
-        if (raf) return;
-        raf = requestAnimationFrame(() => {
-          document.documentElement.style.setProperty("--mx", `${mx}%`);
-          document.documentElement.style.setProperty("--my", `${my}%`);
-          raf = 0;
-        });
-      },
-      { passive: true }
-    );
-  }
-
-  // Scroll reveals
+  // Reveal on scroll
   const reveals = document.querySelectorAll("[data-reveal]");
   if (!reveals.length || reduceMotion) {
     reveals.forEach((el) => el.classList.add("is-visible"));
   } else {
-    const observer = new IntersectionObserver(
+    const io = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
           if (!entry.isIntersecting) return;
           entry.target.classList.add("is-visible");
-          observer.unobserve(entry.target);
+          io.unobserve(entry.target);
         });
       },
-      { threshold: 0.16, rootMargin: "0px 0px -6% 0px" }
+      { threshold: 0.14, rootMargin: "0px 0px -6% 0px" }
     );
-    reveals.forEach((el) => observer.observe(el));
+    reveals.forEach((el) => io.observe(el));
   }
 
-  // Parallax float shots
-  const parallaxEls = document.querySelectorAll("[data-parallax]");
-  if (parallaxEls.length && !reduceMotion) {
-    let ticking = false;
-    const updateParallax = () => {
-      const mid = window.innerHeight * 0.5;
-      parallaxEls.forEach((el) => {
-        const speed = Number(el.getAttribute("data-parallax") || 0.1);
-        const rect = el.getBoundingClientRect();
-        const offset = (rect.top + rect.height * 0.5 - mid) * -speed;
-        el.style.translate = `0 ${offset.toFixed(1)}px`;
+  // Feature tabs
+  const tabs = document.querySelectorAll("[data-feature-tab]");
+  const panels = document.querySelectorAll("[data-feature-panel]");
+  tabs.forEach((tab) => {
+    tab.addEventListener("click", () => {
+      const id = tab.getAttribute("data-feature-tab");
+      tabs.forEach((t) => {
+        const on = t === tab;
+        t.classList.toggle("is-active", on);
+        t.setAttribute("aria-selected", String(on));
       });
-      ticking = false;
+      panels.forEach((panel) => {
+        const match = panel.getAttribute("data-feature-panel") === id;
+        panel.hidden = !match;
+      });
+    });
+  });
+
+  // Product sliders
+  const createSlider = (root) => {
+    const track = root.querySelector("[data-slider-track]");
+    const slides = [...root.querySelectorAll("[data-slide]")];
+    const dotsWrap = root.querySelector("[data-slider-dots]");
+    const prev = root.querySelector("[data-slider-prev]");
+    const next = root.querySelector("[data-slider-next]");
+    if (!track || slides.length < 2) return;
+
+    let index = 0;
+    let timer = 0;
+    let startX = 0;
+    let deltaX = 0;
+    let dragging = false;
+    const autoplay = Number(root.getAttribute("data-autoplay") || 0);
+
+    const goTo = (nextIndex) => {
+      index = (nextIndex + slides.length) % slides.length;
+      track.style.transform = `translate3d(${-index * 100}%, 0, 0)`;
+      slides.forEach((slide, i) => slide.classList.toggle("is-active", i === index));
+      dotsWrap?.querySelectorAll(".slider-dot").forEach((dot, i) => {
+        dot.classList.toggle("is-active", i === index);
+        dot.setAttribute("aria-current", i === index ? "true" : "false");
+      });
     };
-    window.addEventListener(
-      "scroll",
-      () => {
-        if (ticking) return;
-        ticking = true;
-        requestAnimationFrame(updateParallax);
+
+    slides.forEach((slide, i) => {
+      const label = slide.querySelector("strong")?.textContent || `Slide ${i + 1}`;
+      const dot = document.createElement("button");
+      dot.type = "button";
+      dot.className = `slider-dot${i === 0 ? " is-active" : ""}`;
+      dot.setAttribute("aria-label", `Show ${label}`);
+      if (i === 0) dot.setAttribute("aria-current", "true");
+      dot.addEventListener("click", () => {
+        goTo(i);
+        restart();
+      });
+      dotsWrap?.appendChild(dot);
+    });
+
+    const stop = () => {
+      if (timer) window.clearInterval(timer);
+      timer = 0;
+    };
+
+    const start = () => {
+      if (reduceMotion || !autoplay) return;
+      stop();
+      timer = window.setInterval(() => goTo(index + 1), autoplay);
+    };
+
+    const restart = () => {
+      stop();
+      start();
+    };
+
+    prev?.addEventListener("click", () => {
+      goTo(index - 1);
+      restart();
+    });
+    next?.addEventListener("click", () => {
+      goTo(index + 1);
+      restart();
+    });
+
+    root.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        goTo(index - 1);
+        restart();
+      }
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        goTo(index + 1);
+        restart();
+      }
+    });
+    root.setAttribute("tabindex", "0");
+
+    const stage = root.querySelector(".slider-stage");
+    stage?.addEventListener(
+      "pointerdown",
+      (e) => {
+        dragging = true;
+        startX = e.clientX;
+        deltaX = 0;
+        stage.setPointerCapture?.(e.pointerId);
+        stop();
       },
       { passive: true }
     );
-    updateParallax();
-  }
+    stage?.addEventListener(
+      "pointermove",
+      (e) => {
+        if (!dragging) return;
+        deltaX = e.clientX - startX;
+        track.style.transition = "none";
+        track.style.transform = `translate3d(calc(${-index * 100}% + ${deltaX}px), 0, 0)`;
+      },
+      { passive: true }
+    );
+    const endDrag = () => {
+      if (!dragging) return;
+      dragging = false;
+      track.style.transition = "";
+      if (Math.abs(deltaX) > 50) goTo(index + (deltaX < 0 ? 1 : -1));
+      else goTo(index);
+      restart();
+    };
+    stage?.addEventListener("pointerup", endDrag);
+    stage?.addEventListener("pointercancel", endDrag);
+    stage?.addEventListener("pointerleave", endDrag);
 
-  // 3D tilt on screenshots
-  const tilts = document.querySelectorAll("[data-tilt]");
-  if (tilts.length && !reduceMotion) {
-    tilts.forEach((el) => {
-      const max = 7;
-      el.addEventListener("pointermove", (event) => {
-        const rect = el.getBoundingClientRect();
-        const x = (event.clientX - rect.left) / rect.width;
-        const y = (event.clientY - rect.top) / rect.height;
-        const rx = (0.5 - y) * max;
-        const ry = (x - 0.5) * max;
-        el.style.transform = `perspective(900px) rotateX(${rx.toFixed(2)}deg) rotateY(${ry.toFixed(2)}deg) scale(1.01)`;
-      });
-      el.addEventListener("pointerleave", () => {
-        el.style.transform = "";
-      });
+    root.addEventListener("mouseenter", stop);
+    root.addEventListener("mouseleave", start);
+    root.addEventListener("focusin", stop);
+    root.addEventListener("focusout", (e) => {
+      if (!root.contains(e.relatedTarget)) start();
+    });
+
+    goTo(0);
+    start();
+  };
+
+  document.querySelectorAll("[data-slider]").forEach(createSlider);
+
+  // PWA install + service worker
+  let deferredPrompt = null;
+  const installBtn = document.querySelector("[data-install]");
+  const toast = document.querySelector("[data-install-toast]");
+  const installConfirm = document.querySelector("[data-install-confirm]");
+  const installDismiss = document.querySelector("[data-install-dismiss]");
+
+  const showInstall = () => {
+    if (installBtn) installBtn.hidden = false;
+    if (toast && !sessionStorage.getItem("corex-install-dismissed")) toast.hidden = false;
+  };
+
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    showInstall();
+  });
+
+  const promptInstall = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    await deferredPrompt.userChoice;
+    deferredPrompt = null;
+    if (installBtn) installBtn.hidden = true;
+    if (toast) toast.hidden = true;
+  };
+
+  installBtn?.addEventListener("click", promptInstall);
+  installConfirm?.addEventListener("click", promptInstall);
+  installDismiss?.addEventListener("click", () => {
+    if (toast) toast.hidden = true;
+    sessionStorage.setItem("corex-install-dismissed", "1");
+  });
+
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("./sw.js").catch(() => {});
     });
   }
-
-  // Lightbox preview
-  const root = document.querySelector("[data-lightbox-root]");
-  const img = document.querySelector("[data-lightbox-img]");
-  const caption = document.querySelector("[data-lightbox-caption]");
-  const closeBtn = document.querySelector("[data-lightbox-close]");
-
-  const closeLightbox = () => {
-    if (!root) return;
-    root.hidden = true;
-    document.body.style.overflow = "";
-    if (img) img.removeAttribute("src");
-  };
-
-  const openLightbox = (src, text, alt) => {
-    if (!root || !img) return;
-    img.src = src;
-    img.alt = alt || text || "Product preview";
-    if (caption) caption.textContent = text || "";
-    root.hidden = false;
-    document.body.style.overflow = "hidden";
-    closeBtn?.focus();
-  };
-
-  document.querySelectorAll("[data-lightbox]").forEach((el) => {
-    const activate = () => {
-      openLightbox(
-        el.getAttribute("data-lightbox"),
-        el.getAttribute("data-caption") || "",
-        el.querySelector("img")?.alt || ""
-      );
-    };
-    el.addEventListener("click", activate);
-    if (el.tagName !== "BUTTON") {
-      el.setAttribute("role", "button");
-      el.setAttribute("tabindex", "0");
-      el.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          activate();
-        }
-      });
-    }
-  });
-
-  closeBtn?.addEventListener("click", closeLightbox);
-  root?.addEventListener("click", (event) => {
-    if (event.target === root) closeLightbox();
-  });
-  window.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && root && !root.hidden) closeLightbox();
-  });
 })();
